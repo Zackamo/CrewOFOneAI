@@ -1,36 +1,23 @@
 # Reinforcement Learning Agent for Crew of One
 
-As the title suggests, this is a Machine Learning agent build to play the game "Crew of One". The original game was made by a team including myself for the GMTK 2020 Game Jam. I have since made some adaptations to interface with the ML Agent. The agent is built in python using the Keras libraries. The model is using the Deep Deterministic Policy Gradient algorythm to learn a policy over a couple thousand lives in "Crew of One"
+As the title suggests, this is a Machine Learning agent build to play the game "Crew of One". The original game was made by a team including myself for the GMTK 2020 Game Jam. I have since made some adaptations to interface with the ML Agent. The agent is built in python using the Keras libraries. The model is using the Deep Deterministic Policy Gradient algorythm to learn a policy over a couple thousand lives in "Crew of One".
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
+In order to run Crew of One AI on your machine you will need the AI enabled copy of the game and the network itself, these can be found in this repository. You will also need a redis server running on the default port.
 
 ### Prerequisites
 
-What things you need to install the software and how to install them
+For the project to run it needs a redis server running at 
+For information on downloading and setting up redis see: https://redis.io/
 
-```
-Give examples
-```
+You will also need to be able to run python scripts.
 
-### Installing
+### Running on Windows
 
-A step by step series of examples that tell you how to get a development env running
+Once the files have been downloaded, run the python script "Network.py". Depending on the details of your computer it might print a warning about not having a GPU, this can be ignored. Once the script has printed "waiting for start", open the game.
 
-Say what the step will be
-
-```
-Give the example
-```
-
-And repeat
-
-```
-until finished
-```
-
-End with an example of getting some data out of the system or using it for a little demo
+Opening Crew of One is as simple as running the .exe file included, once the game has started click "Start AI Game" to begin training. Double check that the player is in fact making moves (you should see it change direction a couple times a second), and that python is printing score updates after each death. These indicate that the network is in fact running. The game will restart autimatically after each death unless you check the box in the lower left of the screen during gameplay.
 
 ## Built With
 
