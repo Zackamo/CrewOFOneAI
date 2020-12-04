@@ -12,6 +12,10 @@ On the Network side, it is also running in a loop, but it is not syncronized wit
 
 This general archetecture, including the DDPG algorithm, was fairly straight forward to set up. I had a little trouble with connecting the game in unity to the redis server and properly transmitting data, but it was not long before I had player making random moves directed by the Network. Unfortunately, the actual training was not as simple.
 
+The network currently does not appear to learn anything. Even across a couple thousand games, the AI player still continually makes the same choice regardless of the situation. I think this is happening because the reward function is too seperate from the actions the agent takes. As is, the agent gets rewarded any time it doesn't die. This should not be a problem in theory because the critic network should be trying to figure out the likelyhood that a given action will lead to a longer or shorter total survival time. But I think in this case, there are very few actions that lead directly to death, so there is not sufficent feedback on the relative value of different moves.
+
+In order to fix this I would probably need to rebuild the reward system to be both more immediate and more nuanced, something like punishing for pointing towards a hazard, regardless of whether the player actually hits it. One challenge of this is that it means the agent will learn a different game than the one the human plays, so I will need to be aware of bad rewards. i.e. I might end up training the agent to do something that is optimal for its custom scoreing system, but not the game's scoreing system.
+
 ## Getting Started
 
 In order to run Crew of One AI on your machine you will need the AI enabled copy of the game and the network itself, these can be found in this repository. You will also need a redis server running on the default port.
