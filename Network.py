@@ -4,6 +4,7 @@ import matplotlib.pylab as plt
 import tensorflow as tf
 from tensorflow.keras import layers
 import keras
+import time
 
 r = redis.Redis(host='127.0.0.1', port=6379, db=0, decode_responses=True)
 startSub = r.pubsub()
@@ -12,13 +13,16 @@ startSub.psubscribe("start")
 #size of the input vector, what the network "sees"
 num_actions = 2
 
-upper_bound = 2 * np.pi
-lower_bound = 0
+upper_bound = np.pi/4
+lower_bound = -1*np.pi/4
 
 size = 36
 num_tracked = 5
-extra_params = 13
+extra_params = 15
 num_states = (size*size * num_tracked) + extra_params
+
+bodyRot = 0
+turretRot = 0
 
 
 ################### Helper Functions ###############
@@ -119,7 +123,7 @@ def update_target(target_weights, weights, tau):
 
 def get_actor():
     # Initialize weights between -3e-3 and 3-e3
-    last_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
+    last_init = tf.random_uniform_initializer(minval=-0.3, maxval=0.3)
 
     state = layers.Input(shape=(size, size, num_tracked))
     player = layers.Input(shape=(extra_params))
@@ -128,7 +132,7 @@ def get_actor():
     concat = layers.Concatenate(axis=1)([conv, player])
     out = layers.Dense(256, activation="relu")(concat)
     out = layers.Dense(256, activation="relu")(out)
-    outputs = layers.Dense(2, activation="sigmoid", kernel_initializer=last_init)(out)
+    outputs = layers.Dense(2, activation="tanh", kernel_initializer=last_init)(out)
 
     # Our upper bound is 2.0 for Pendulum.
     outputs = outputs * upper_bound
@@ -167,7 +171,7 @@ def get_critic():
 def policy(state, player):
     sampled_actions = tf.squeeze(actor_model([state, player]))
    
-    #sig_std_dev = 0.2
+    sig_std_dev = 0.2
 
     noise = np.random.normal(0, sig_std_dev, 1)
     # Adding noise to action
@@ -182,7 +186,7 @@ def policy(state, player):
 
 
 def getState():
-    shootMode = int(r.get("mode"))
+    shootMode = int(r.get("mode")) # 1:drive 0:aim
     swapTime = float(r.get("swapTime"))
     xPos = float(r.get("xPos"))
     x2Pos = xPos**2
@@ -190,6 +194,8 @@ def getState():
     y2Pos = yPos**2
     shotTime = float(r.get("shotTime"))
     powerupDuration = float(r.get("powerupDuration"))
+    bRotation = (bodyRot % (np.pi * 2))/2*np.pi
+    tRotation = (turretRot % (np.pi * 2))/2*np.pi
     
     activePowerup = [0,0,0,0,0]
     index = int(r.get("powerupActive"))
@@ -199,7 +205,6 @@ def getState():
     reward = float(r.get("reward"))
     done = int(r.get("dead"))
     
-    
     gunners = parsePositions("gunners")
     chargers = parsePositions("chargers")
     rocks = parsePositions("rocks")
@@ -207,7 +212,7 @@ def getState():
     powerups = parsePositions("powerups")
     
     
-    player = [shootMode, swapTime, xPos, x2Pos, yPos, y2Pos, shotTime, powerupDuration] + activePowerup
+    player = [shootMode, swapTime, xPos, x2Pos, yPos, y2Pos, bRotation, tRotation, shotTime, powerupDuration] + activePowerup
     state = np.dstack((gunners, chargers, rocks, holes, powerups))
     
     return state, player, reward, done
@@ -222,35 +227,37 @@ def start(ep):
     print("Waiting for start")
     for update in startSub.listen():
         if(int(update['data']) == ep):
-            print("starting")
             state, player, reward, done = getState()
+            print("state gotten")
             return state, player
 
-def parsePositions(redisKey):
-    try: 
-        temp = r.lpop(redisKey)
-    except:
-        print(redisKey, "is nil!")
-        
+def parsePositions(redisKey): 
+    temp = r.lpop(redisKey)
     result = np.zeros((size, size))
-    while temp != None:
-        temp = int(temp)
-        result[temp // size,temp % size] = 1
-        temp = r.lpop(redisKey)
+    if temp != None:
+        while temp != None:
+            temp = int(temp)
+            result[temp // size,temp % size] = 1
+            temp = r.lpop(redisKey)
     return result 
 
 '''########### Hyper Parameters ##################'''
-#std_dev = 0.2
 
 actor_model = get_actor()
 critic_model = get_critic()
 
+actor_model.load_weights("actor.h5")
+critic_model.load_weights("critic.h5")
+
 target_actor = get_actor()
 target_critic = get_critic()
 
+target_actor.load_weights("target_actor.h5")
+target_critic.load_weights("target_critic.h5")
+
 # Making the weights equal initially
-target_actor.set_weights(actor_model.get_weights())
-target_critic.set_weights(critic_model.get_weights())
+#target_actor.set_weights(actor_model.get_weights())
+#target_critic.set_weights(critic_model.get_weights())
 
 # Learning rate for actor-critic models
 critic_lr = 0.002
@@ -274,28 +281,28 @@ ep_reward_list = []
 avg_reward_list = []
 
 action_one_list = []
-action_two_list = []
 
 # Takes about 4 min to train
 for ep in range(total_episodes):
 
     prev_state, prev_player = start(ep)
     episodic_reward = 0
-    sig_std_dev = 2/(1 + np.exp((1/total_episodes)*(ep - total_episodes/2)))
-    print(sig_std_dev)
+    #sig_std_dev = 2/(1 + np.exp((1/total_episodes)*(ep - total_episodes/2)))
+    #print(sig_std_dev)
     
     tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state, dtype=tf.float32), 0)
     tf_prev_player = tf.expand_dims(tf.convert_to_tensor(prev_player, dtype=tf.float32), 0)
 
-    
     action = policy(tf_prev_state, tf_prev_player)
     
     if prev_player[0] == 0:
         action_one_list.append(action[0][0])
-        setAction(action[0][0])
+        turretRot += action[0][0]
+        
     else:
         action_one_list.append(action[0][1])
-        setAction(action[0][1])
+        bodyRot += action[0][1]
+        setAction(bodyRot)
         
     tf_action = tf.expand_dims(tf.convert_to_tensor(action, dtype=tf.float32), 0)
     
@@ -332,12 +339,16 @@ for ep in range(total_episodes):
         
         if player[0] == 0:
             action_one_list.append(action[0][0])
-            setAction(action[0][0])
+            turretRot += action[0][0]
+            setAction(turretRot)
         else:
             action_one_list.append(action[0][1])
-            setAction(action[0][1])
+            bodyRot += action[0][1]
+            setAction(bodyRot)
             
         tf_action = tf.expand_dims(tf.convert_to_tensor(action, dtype=tf.float32), 0)
+        
+        time.sleep(0.5)
 
     ep_reward_list.append(episodic_reward)
 
